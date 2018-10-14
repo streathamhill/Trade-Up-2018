@@ -1,0 +1,212 @@
+---
+title: "Trade Up: Analysis of Quarter 1, 2018 (Rollout Year)"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, cache = TRUE, include = FALSE, echo = FALSE}
+
+library(readxl)
+library(tidyverse)
+library(scales)
+library(stringr)
+library(grid)
+library(gridExtra)
+library(repr)
+library(kableExtra)
+```
+
+### Background
+
+#### Description of programme
+The Community Business Trade Up Programme, run by the School of Social Entrepreneurs in partnership with Power to Change, provides grants of up to £10,000 to help to increase sales and trading in growing community businesses, so that they can become more sustainable. A 12-day learning course is provided as part of the programme.
+
+#### Match trading grant
+Grants are linked to growth over the year to reward sales and trading growth. Claims are calculated according to the trading income that participating community businesses earn in each quarter.
+
+For each quarter of the year to date, the increase in trading income over the same quarter in the previous year achieved by the business can be claimed form the fund (‘matched’), up to a maximum of the claim available to date (£2,500 per quarter passed), less the grant received in the year to date.
+
+A £500 grant advance per quarter is offered to participants, which is repaid from the eligible claim amount.
+
+```{r data import, cache = TRUE, echo = FALSE, warning = FALSE}
+
+TU_file <-
+  "CBTUR - Roll Out Year Q1 PtC Data.xlsx"
+save_dir <-
+  "present_charts"
+
+## Load first page of Trade Up Excel (skip first 2 row) as CBTU
+CBTU <-
+  read_excel(TU_file,
+    sheet = "Clean Data",
+    skip = 0
+  )
+
+```
+#### Exclusions
+The following businesses have been excluded because complete figures are not available for Quarter 1:
+
+- **Bebeccino Kids Café** (MT Hampshire),
+- **Hillsea Lido** (MT Hampshire),
+- **Weeke Community Association** (MT Hampshire),
+- **St Michael's Community Centre** (MT Hampshire),
+- **Friends of Cricklewood Library** (Control London),
+- **The APE Project** (Control London),
+- **Church Fenton Community Shop** (Control York),
+- **Spark York CIC** (MT York),
+- **Secklow Sounds CIC** (MT East),
+- **Three Trees Community Centre** (MT Midlands).
+
+(Businesses were also removed from analysis where there was no recorded baseline income.)
+
+```{r data munging, cache = TRUE, echo = FALSE, warning = FALSE}
+
+## Skip businesses where data has not been collected for Q1
+CBTU <- filter(CBTU, !`Grant Reference` %in% c(50, 53, 54, 58, 64, 68, 83, 102, 107, 130))
+
+## Skip businesses where there is no recorded baseline data
+CBTU <- filter(CBTU, `Trading Income Baseline Q1` > 0 & `Non-trading Income Baseline Q1` > 0)
+
+## Add 'delta_' measures of relative quarterly growth
+CBTU <- CBTU %>%
+  mutate(
+    delta_Trading_Q1 = (`Trading Income Q1` - `Trading Income Baseline Q1`) / (`Trading Income Baseline Q1` + `Non-trading Income Baseline Q1`) * 100,
+    delta_NonTrading_Q1 = (`Non-trading Income Q1` - `Non-trading Income Baseline Q1`) / (`Trading Income Baseline Q1` + `Non-trading Income Baseline Q1`) * 100,
+    delta_Trading_Q2 = (`Trading Income Q2` - `Trading Income Baseline Q2`) / (`Trading Income Baseline Q2` + `Non-trading Income Baseline Q2`) * 100,
+    delta_NonTrading_Q2 = (`Non-trading Income Q2` - `Non-trading Income Baseline Q2`) / (`Trading Income Baseline Q2` + `Non-trading Income Baseline Q2`) * 100,
+    delta_Trading_Q3 = (`Trading Income Q3` - `Trading Income Baseline Q3`) / (`Trading Income Baseline Q3` + `Non-trading Income Baseline Q3`) * 100,
+    delta_NonTrading_Q3 = (`Non-trading Income Q3` - `Non-trading Income Baseline Q3`) / (`Trading Income Baseline Q3` + `Non-trading Income Baseline Q3`) * 100,
+    delta_Trading_Q4 = (`Trading Income Q4` - `Trading Income Baseline Q4`) / (`Trading Income Baseline Q4` + `Non-trading Income Baseline Q4`) * 100,
+    delta_NonTrading_Q4 = (`Non-trading Income Q4` - `Non-trading Income Baseline Q4`) / (`Trading Income Baseline Q4` + `Non-trading Income Baseline Q4`) * 100
+  )
+    
+```
+
+```{r functions, cache = TRUE, echo = FALSE}
+
+trajectory_table_1 <- function(var_1, var_2, var_3, x_max, y_max, quarter) {
+  CBTU %>%
+    group_by(Scheme) %>%
+    summarise(
+      `Number of businesses` = n(),
+      `Median income` = paste("£", format(round(median(eval(var_3))), big.mark = ","), sep = ""),
+      `Trading` = format(round(median(eval(var_2))), nsmall = 1),
+      `Non-trading` = format(round(median(eval(var_1))), nsmall = 1)
+    ) %>%
+    knitr::kable(
+      format = "html",
+      caption = paste0("Median income in Quarter ", quarter, ", by scheme"),
+      align = c("l", "r", "r", "r", "r")
+    ) %>%
+    kable_styling("striped") %>%
+    add_header_above(c(" " = 3, "Indexed growth,\n2016 quarter = 100" = 2)) %>%
+    column_spec(1, width = "15em") %>%
+    column_spec(2:5, width = "5em")
+}
+
+trajectory_table_2 <- function(var_1, var_2, var_3, x_max, y_max, quarter) {
+  CBTU %>%
+    group_by(Location) %>%
+    filter(Scheme != "Control") %>%
+    summarise(
+      `Number of businesses` = n(),
+      `Median income` = paste("£", format(round(median(eval(var_3))), big.mark = ","), sep = ""),
+      `Trading` = format(round(median(eval(var_2))), nsmall = 1),
+      `Non-trading` = format(round(median(eval(var_1))), nsmall = 1)
+    ) %>%
+    knitr::kable(
+      format = "html",
+      caption = paste0("Median income in Quarter ", quarter, ", by sector (excluding Control Group)"),
+      align = c("l", "r", "r", "r", "r")
+    ) %>%
+    kable_styling("striped") %>%
+    add_header_above(c(" " = 3, "Indexed growth,\n2016 quarter = 100" = 2)) %>%
+    column_spec(1, width = "15em") %>%
+    column_spec(2:5, width = "5em")
+}
+```
+
+***
+
+### Programme demographics
+
+TBC
+
+&nbsp;
+
+***
+
+### Growth in trading/non-trading income relative to total baseline income, split by sector
+
+The quarterly baseline income of each community business is indexed at 100 and then the growth in trading/non-trading income is measured against that index. So, for example, if trading income in Q1 increases by 75 and non-trading income income increases by 25, then total Q1 income has doubled compared to the baseline quarter (since 75 + 25 = 100) and trading income had increased three times as much as non-Trading income (since 75 / 25 = 3).
+
+The coloured dots shows the growth in trading/non-trading income. Ideally all dots should be in one of the two green zones.  The colour of the dot indicates which location cohort the community business operates in; the size of the dot indicates the relative size of the baseline quarterly income for that business.
+
+(Note that non-trade income has been adjusted to remove the Trade Up claim amount in the relevant quarters.)
+
+#### Quarter 1 2017 growth trajectories
+
+```{r Quarter 1, cache = TRUE, echo = FALSE, fig.align = 'center'}
+
+ggplot(CBTU) +
+    geom_segment(
+      aes(
+        x = 0,
+        y = 0,
+        xend = delta_NonTrading_Q1,
+        yend = delta_Trading_Q1,
+        alpha = 1.0
+      ), show.legend = FALSE
+    ) +
+    geom_point(aes(delta_NonTrading_Q1, delta_Trading_Q1, colour = Location, size = delta_NonTrading_Q1 + delta_Trading_Q1, alpha = 1.0)) +
+    annotate("rect", xmin = 0, ymin = 0, xmax = 300, ymax = 300, alpha = 0.3, fill = "green") +
+    annotate("rect", xmin = -150, ymin = 0, xmax = 0, ymax = 300, alpha = 0.1, fill = "green") +
+    annotate("rect", xmin = 0, ymin = -100, xmax = 300, ymax = 0, alpha = 0.1, fill = "yellow") +
+    annotate("rect", xmin = -150, ymin = -100, xmax = 0, ymax = 0, alpha = 0.1, fill = "red") +
+    guides(colour = guide_legend(ncol = 2), size = "none", alpha = "none") +
+    theme(legend.position = "bottom", legend.title = element_blank()) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    facet_grid(. ~ Scheme) +
+    coord_cartesian(xlim = c(-100, 250), ylim = c(-50, 250)) +
+    labs(x = "Non-Trading Income", y = "Trading Income")
+
+trajectory_table_1(
+  quo(delta_NonTrading_Q1),
+  quo(delta_Trading_Q1),
+  quo(`Trading Income Q1` + `Non-trading Income Q1`),
+  150, 150, 4
+)
+
+trajectory_table_2(
+  quo(delta_NonTrading_Q1),
+  quo(delta_Trading_Q1),
+  quo(`Trading Income Q1` + `Non-trading Income Q1`),
+  150, 150, 4
+)
+```
+&nbsp;
+
+***
+
+&nbsp;
+
+```{r, cache = TRUE, echo = FALSE, warning = FALSE}
+
+medians <- aggregate(delta_Trading_Q1 ~ Scheme, CBTU, median)
+CBTU %>%
+  ggplot(
+    aes(x = Scheme, y = delta_Trading_Q1, colour = Scheme)) +
+  geom_boxplot(outlier.shape = NA, show.legend = FALSE) +
+  geom_text(
+    data = medians,
+    aes(label = paste0('Median = ', format(delta_Trading_Q1, digits = 2)),
+        y = -50), show.legend = FALSE) +
+  coord_cartesian(xlim = NULL, ylim = c(-50, 350)) +
+  labs(
+    title = "Change in Trading Income: Trade Up Q1 compared to Baseline",
+    subtitle = "Outliers not plotted",
+    x = "", y = "Relative increase in trading income")
+
+```
