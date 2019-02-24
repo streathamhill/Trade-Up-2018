@@ -1,11 +1,11 @@
 # Unified Trade Up Analysis
 
+source("Common Tools.R")
 library(readxl)
-library(tidyverse)
 library(lattice)
 
 CBTU <-
-  read_excel("CBTUR - Roll Out Year Q1 PtC Data.xlsx",
+  read_excel("CBTU PtC - Roll Out Year Q4 110219.xlsx",
     sheet = "Clean Data",
     skip = 0
   )
@@ -42,9 +42,9 @@ CBTU %>% group_by(Scheme) %>% summarise(
 
 CBTU %>% group_by(Scheme) %>% summarise(
   n = n(),
-  median_BASELINE_2 = median(`Trading Ratio Baseline Q2`, na.rm = TRUE),
-  median_TRADEUP_2 = median(`Trading Ratio Q2`, na.rm = TRUE),
-  median_Change_2 = median(`Trading Ratio Change Q2`, na.rm = TRUE)
+  median_BASELINE_3 = median(`Trading Ratio Baseline Q3`, na.rm = TRUE),
+  median_TRADEUP_3 = median(`Trading Ratio Q3`, na.rm = TRUE),
+  median_Change_3 = median(`Trading Ratio Change Q3`, na.rm = TRUE)
 )
 
 OUT <- (CBTU %>%
@@ -52,24 +52,33 @@ OUT <- (CBTU %>%
   summarise_at(
     vars(starts_with("Trading Ratio")),
     funs(median = median(., na.rm = TRUE))
-  ))
-
-OUT <- OUT %>%
-  gather(var, val, 2:ncol(OUT)) %>%
-  spread(names(OUT)[1], val)
+  )
+) %>%
+  gather(var, val, 2:ncol(.)) %>%
+  spread(names(.)[1], val)
 
 CBTU %>%
-  ggplot() +
-  geom_histogram(aes(`Trading Ratio Q2`, fill = `Scheme`), position = "dodge")
+  ggplot(aes(x =`Trading Ratio Cumulative`)) +
+  geom_histogram(aes(y = ..density.., fill = `Scheme`),
+                 binwidth = 25, position = "dodge") +
+  theme_ptc()
 
 histogram(~ `Trading Ratio Change Cumulative` | interaction(as.factor(CBTU$Location), as.factor(CBTU$Scheme)),
-          type = "count", data = CBTU, nint = 5, layout = c(2,5))
+  type = "count", data = CBTU, nint = 5, layout = c(2, 5)
+)
+
 histogram(~ `Trading Ratio Change Cumulative` | as.factor(Scheme),
-          data = CBTU, type = "count", nint = 5, labels = TRUE, layout = c(1,2))
+  data = CBTU, type = "count", nint = 5, labels = TRUE, layout = c(1, 2)
+)
+
 kruskal.test(`Trading Ratio Change Cumulative` ~ as.factor(Scheme), data = CBTU)
 wilcox.test(`Trading Ratio Change Cumulative` ~ as.factor(Scheme), data = CBTU)
 
 CBTU %>%
   ggplot(aes(Scheme, `Trading Ratio Change Cumulative`)) +
   geom_boxplot() +
-  geom_point()
+  geom_point() +
+  theme_ptc()
+
+OUT %>%
+  filter(str_contains(var, "median"))
