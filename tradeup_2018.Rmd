@@ -1,10 +1,22 @@
-#### Title: Unified Trade Up Analysis ####
+---
+title: "Unified Trade Up Analysis"
+author: "Richard Harries"
+date: "13 March 2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
 
+```{r setup, include=FALSE}
 source("Common Tools.R")
+library(broom)
+library(knitr)
+library(kableExtra)
 library(readxl)
+```
 
-#### Data import and manipulation ####
-
+```{r data import, include=FALSE}
 CBTU <-
   read_excel("CBTU PtC - Roll Out Year Q4 110219.xlsx",
     sheet = "Clean Data",
@@ -44,31 +56,72 @@ for (j in 1:4) {
 CBTU["Trading Ratio Change Cumulative"] <-
   CBTU["Trading Ratio Cumulative"] -
   CBTU["Trading Ratio Baseline Cumulative"]
+```
 
-#### Exploratory Data Analysis ####
+## Exploratory Data Analysis
 
-CBTU %>% group_by(Scheme) %>% summarise(
-  n = n(),
-  mean_BASELINE_C = mean(`Trading Ratio Baseline Cumulative`, na.rm = TRUE),
-  mean_TRADEUP_C = mean(`Trading Ratio Cumulative`, na.rm = TRUE),
-  mean_Change_C = mean(`Trading Ratio Change Cumulative`, na.rm = TRUE)
-)
+There are 99 organisations in the sample, 20 in the control group, 79 in the treatment group. Both participate in the SSE-run action learning sets.
 
-CBTU %>% group_by(Scheme) %>% summarise(
-  n = n(),
-  median_BASELINE_C = median(`Trading Ratio Baseline Cumulative`, na.rm = TRUE),
-  median_TRADEUP_C = median(`Trading Ratio Cumulative`, na.rm = TRUE),
-  median_Change_C = median(`Trading Ratio Change Cumulative`, na.rm = TRUE)
-)
+```{r eda1, echo = FALSE}
+CBTU %>%
+  group_by(Scheme) %>%
+  summarise(
+    n = n(),
+    mean_BASELINE_C = mean(`Trading Ratio Baseline Cumulative`, na.rm = TRUE),
+    mean_TRADEUP_C = mean(`Trading Ratio Cumulative`, na.rm = TRUE),
+    mean_Change_C = mean(`Trading Ratio Change Cumulative`, na.rm = TRUE)
+  ) %>%
+  kable(
+    caption = "**Trading ratio, mean changes**",
+    col.names = c(
+      "Scheme", "n", "Baseline year",
+      "Trade Up year", "Change"
+    ),
+    digits = 1, format = "html"
+  ) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
 
-kruskal.test(`Trading Ratio Cumulative` ~ as.factor(Scheme), data = CBTU)
-wilcox.test(`Trading Ratio Cumulative` ~ as.factor(Scheme), data = CBTU)
+CBTU %>%
+  group_by(Scheme) %>%
+  summarise(
+    n = n(),
+    median_BASELINE_C = median(`Trading Ratio Baseline Cumulative`, na.rm = TRUE),
+    median_TRADEUP_C = median(`Trading Ratio Cumulative`, na.rm = TRUE),
+    median_Change_C = median(`Trading Ratio Change Cumulative`, na.rm = TRUE)
+  ) %>%
+  kable(
+    caption = "**Trading ratio, median changes**",
+    col.names = c(
+      "Scheme", "n", "Baseline year",
+      "Trade Up year", "Change"
+    ),
+    digits = 1, format = "html"
+  ) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+**Kruskal-Wallis Test**
 
-kruskal.test(`Trading Ratio Change Cumulative` ~ as.factor(Scheme), data = CBTU)
-wilcox.test(`Trading Ratio Change Cumulative` ~ as.factor(Scheme), data = CBTU)
+A collection of data samples are independent if they come from unrelated populations and the samples do not affect each other. Using the Kruskal-Wallis Test, we can decide whether the population distributions are identical without assuming them to follow the normal distribution.
 
-#### Plots ####
+```{r eda2, echo = FALSE}
+CBTU %>% kruskal.test(`Trading Ratio Cumulative` ~ as.factor(Scheme), .)
+CBTU %>% kruskal.test(`Trading Ratio Change Cumulative` ~ as.factor(Scheme), .)
+```
 
+**Mann-Whitney-Wilcoxon Test**
+
+Two data samples are independent if they come from distinct populations and the samples do not affect each other. Using the Mann-Whitney-Wilcoxon Test, we can decide whether the population distributions are identical without assuming them to follow the normal distribution.
+
+```{r eda3, echo = FALSE}
+CBTU %>% wilcox.test(`Trading Ratio Cumulative` ~ as.factor(Scheme), .)
+CBTU %>% wilcox.test(`Trading Ratio Change Cumulative` ~ as.factor(Scheme), .)
+```
+
+## Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
 CBTU %>%
   ggplot() +
   geom_histogram(aes(
@@ -120,7 +173,7 @@ CBTU_AVG <- CBTU %>%
   group_by(Scheme) %>%
   summarise_at(
     vars(starts_with("Trading Ratio")),
-    list(median = ~median(., na.rm = TRUE))
+    list(median = ~ median(., na.rm = TRUE))
   ) %>%
   gather(`Ratio Type`, Value, 2:ncol(.)) %>%
   spread(Scheme, Value)
@@ -161,14 +214,16 @@ CBTU_AVG %>%
   theme_ptc()
 
 CBTU %>%
-  select(Project, Scheme, Location,
-         contains("Trading Ratio Change Q")) %>%
+  select(
+    Project, Scheme, Location,
+    contains("Trading Ratio Change Q")
+  ) %>%
   gather(Quarter, `Trading Ratio Change`, 4:ncol(.)) %>%
   mutate(Quarter = str_sub(Quarter, -2)) %>%
   filter(Scheme == "Control") %>%
   ggplot(aes(x = Quarter, y = `Trading Ratio Change`, group = Project)) +
   geom_point(aes(colour = Location), show.legend = FALSE) +
-  geom_line(aes(colour = Location), show.legend = FALSE) +
+  geom_line(aes(colour = Location), size = 1.25, show.legend = FALSE) +
   geom_hline(aes(yintercept = 0)) +
   labs(
     title = "TradeUp 2018: Quarterly median performance",
@@ -180,14 +235,16 @@ CBTU %>%
   theme_ptc()
 
 CBTU %>%
-  select(Project, Scheme, Location,
-         contains("Trading Ratio Change Q")) %>%
+  select(
+    Project, Scheme, Location,
+    contains("Trading Ratio Change Q")
+  ) %>%
   gather(Quarter, `Trading Ratio Change`, 4:ncol(.)) %>%
   mutate(Quarter = str_sub(Quarter, -2)) %>%
   filter(Scheme == "Match Trading") %>%
   ggplot(aes(x = Quarter, y = `Trading Ratio Change`, group = Project)) +
   geom_point(aes(colour = Location), show.legend = FALSE) +
-  geom_line(aes(colour = Location), show.legend = FALSE) +
+  geom_line(aes(colour = Location), size = 1.25, show.legend = FALSE) +
   geom_hline(aes(yintercept = 0)) +
   labs(
     title = "TradeUp 2018: Quarterly median performance",
@@ -199,18 +256,21 @@ CBTU %>%
   theme_ptc()
 
 CBTU %>%
-  select(Project, Scheme, Location,
-         contains("Trading Ratio Change Q"),
-         contains("Eligible To Claim Ratio Q")) %>%
+  select(
+    Project, Scheme, Location,
+    contains("Trading Ratio Change Q"),
+    contains("Eligible To Claim Ratio Q")
+  ) %>%
   gather(`Ratio Type`, Value, 4:ncol(.)) %>%
   mutate(Quarter = str_sub(`Ratio Type`, -2)) %>%
   mutate(`Ratio Type` = str_sub(`Ratio Type`, 1, -4)) %>%
   replace_na(list(Value = 0)) %>%
   spread(`Ratio Type`, Value) %>%
   ggplot() +
-  geom_point(aes(x = `Eligible To Claim Ratio`, y = `Trading Ratio Change`,
-    colour = Location)
-  ) +
+  geom_point(aes(
+    x = `Eligible To Claim Ratio`, y = `Trading Ratio Change`,
+    colour = Location
+  )) +
   geom_hline(aes(yintercept = 0)) +
   labs(
     title = "TradeUp 2018: Quarterly performance",
@@ -222,3 +282,6 @@ CBTU %>%
   facet_wrap(vars(Scheme, Quarter), ncol = 4) +
   xlim(0, 100) +
   theme_ptc()
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

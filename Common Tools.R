@@ -6,7 +6,7 @@ library(httr) # For http access
 
 # Common functions -------------------------------------------------------------
 
-theme_ptc <- function(base_size = 10, base_family = "Arial") {
+theme_ptc <- function(base_size = 10, base_family = "sans") {
   theme_bw(base_size = base_size, base_family = base_family) +
     theme(
       legend.key = element_blank(),
