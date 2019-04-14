@@ -1,0 +1,220 @@
+---
+title: "2018 Trade Up Analysis (Bayesian)"
+author: "Richard Harries"
+date: '`r format(Sys.Date(), "%A, %d %B %Y")`'
+output: html_document
+---
+  
+```{r import libraries, echo=FALSE, include=FALSE}
+library(kableExtra)
+library(tidyverse)
+library(readxl)
+library(tidybayes)
+source("Common Tools.R")
+```
+
+```{r import data, echo=FALSE, include=FALSE}
+CBTU_2017 <-
+  read_excel("MT CBTUD PTC 170918.xlsx",
+    sheet = "Sheet1",
+    skip = 0
+  ) %>%
+  mutate(Year = 2017) %>%
+  select(-c("Sector", "Beneficiary", "Impact Area 1", "Impact Area 2"))
+
+CBTU_2018 <-
+  read_excel("CBTU PtC - Roll Out Year Q4 110219.xlsx",
+    sheet = "Clean Data",
+    skip = 0
+  ) %>%
+  mutate(Year = 2018) %>%
+  select(-c("Sector", "Beneficiary", "Impact Area 1", "Impact Area 2"))
+
+CBTU <- full_join(CBTU_2017, CBTU_2018) %>%
+  mutate(
+    Scheme = case_when(
+      Scheme == "C" ~ "Control",
+      Scheme == "MT" ~ "Match Trading"
+    )
+  )
+
+# Calculate quarterly trading ratios and annual cumulative ratios
+# for the baseline and programme years
+```
+
+```{r calculate ratios, echo=FALSE, include=FALSE}
+for (i in c("Baseline ", "")) {
+  for (j in 1:4) {
+    CBTU[paste0("Trading Ratio ", i, "Q", j)] <- 100 * CBTU[paste0("Trading Income ", i, "Q", j)] /
+      (CBTU[paste0("Trading Income ", i, "Q", j)] + CBTU[paste0("Non-trading Income ", i, "Q", j)])
+  }
+  CBTU[paste0("Trading Ratio ", i, "Cumulative")] <- 100 *
+    rowSums(CBTU[grepl(paste0("Trading Income ", i, "Q"), names(CBTU))], na.rm = FALSE) /
+    (rowSums(CBTU[grepl(paste0("Trading Income ", i, "Q"), names(CBTU))], na.rm = FALSE) +
+      rowSums(CBTU[grepl(paste0("Non-trading Income ", i, "Q"), names(CBTU))], na.rm = FALSE))
+}
+
+for (j in 1:4) {
+  CBTU[paste0("Trading Ratio Change Q", j)] <-
+    (CBTU[paste0("Trading Ratio Q", j)] - CBTU[paste0("Trading Ratio Baseline Q", j)])
+  CBTU[paste0("Eligible To Claim Ratio Q", j)] <-
+    (CBTU[paste0("Eligible To Claim Q", j)] / (CBTU[paste0("Trading Income Q", j)] + CBTU[paste0("Non-trading Income Q", j)]))
+}
+
+CBTU["Trading Ratio Change Cumulative"] <-
+  CBTU["Trading Ratio Cumulative"] -
+  CBTU["Trading Ratio Baseline Cumulative"]
+```
+
+## Exploratory Data Analysis
+
+Combining the datasets for 2017 and 2018 produces a sample of 128 community businesses, with up to 20 data points recorded for each[^1]. However, the School for Social Entrepreneurs has not yet provided a complete data.
+
+[^1]: Trading income and non-trading income, for each quarter, in the baseline year and programme year, plus four quarterly Trade Up grant awards.
+
+```{r missing data, echo=FALSE, include=TRUE}
+CBTU_NA <- CBTU %>%
+  group_by(Scheme, Year) %>%
+  summarise_at(
+    vars(starts_with("Trading Ratio Change Q")),
+    list(missing = ~ 100 * sum(is.na(.)) / length(.))
+  ) %>%
+  gather(`Ratio Type`, Value, 3:ncol(.))
+
+p <- CBTU_NA %>%
+#  ggplot() +
+  ggplot(aes(
+      text = paste0(
+        Scheme, " (", Year, "): ", round(Value, 0), "%"
+      )
+    )) +
+  geom_line(aes(x = `Ratio Type`, y=Value,
+                group=interaction(Year, Scheme),
+                colour=interaction(Year, Scheme)),
+            size = 1.25) +
+      scale_x_discrete(labels = c("Q1", "Q2", "Q3", "Q4")) +
+    labs(
+      title = "Line chart: Missing data",
+      colour = "", x = "", y = "Percentage",
+      caption = "(based on data from the School for Social Entrepreneurs)"
+    ) +
+    ylim(0, 100)
+ggplot_ptc(p, "text")
+
+CBTU <- CBTU %>% drop_na()
+```
+
+**Trading ratios**
+
+*Performance*
+
+The average trading ratio in the Match Trading Group appears to *rise* by at least seven percentage points compared with a modest *fall* in Control Group. This is consistent with the core hypothesis of Trade Up, however there is considerable overalap between the two groups and the difference is *not* significant at the 5% level using traditional NHST-style tests.
+
+```{r trading ratio averages, echo=FALSE, include=TRUE}
+CBTU %>%
+  group_by(Scheme) %>%
+  summarise(
+    n = n(),
+    mean_Change_C = mean(`Trading Ratio Change Cumulative`, na.rm = TRUE),
+    median_Change_C = median(`Trading Ratio Change Cumulative`, na.rm = TRUE)
+  ) %>%
+  kable(
+    col.names = c(
+      "Group", "n",
+      "Mean",
+      "Median"
+    ),
+    digits = 1, format = "html"
+  ) %>%
+  add_header_above(c(" " = 2, "Percentage point change" = 2)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
+
+p <- CBTU %>%
+  ggplot(aes(Scheme, `Trading Ratio Change Cumulative`,
+    text = round(`Trading Ratio Change Cumulative`, 2)
+  )) +
+  geom_boxplot() +
+  geom_point(aes(colour = as_factor(`Year`)), show.legend = TRUE) +
+  labs(
+    title = "Boxplot: Increase/decrease in trading ratios",
+    x = "Trading ratio", y = "Percentage point change",
+    colour = "Trade Up\nYear"
+  ) +
+  coord_flip()
+ggplot_ptc(p, "text")
+
+CBTU %>%
+  mutate(Group = as.factor(Scheme),
+         `Trading Ratio Change` = `Trading Ratio Change Cumulative`) %>%
+  kruskal.test(`Trading Ratio Change` ~ Group, .)
+
+CBTU %>%
+  mutate(Group = as.factor(Scheme),
+         `Trading Ratio Change` = `Trading Ratio Change Cumulative`) %>%
+  wilcox.test(`Trading Ratio Change` ~ Group, .)
+
+```
+
+```{r bayes esimates, echo=FALSE, include=FALSE}
+
+graphFileType <- "jpeg"
+fileNameRoot <- "TwoGroupTUrobustHet-"
+RopeMuDiff <- c(-0.5, 0.5)
+RopeSdDiff <- c(-0.5, 0.5)
+RopeEff <- c(-0.1, 0.1)
+
+# Load the relevant model into R's working memory:
+source("Jags-Ymet-Xnom2grp-MrobustHet.R")
+
+# Generate the MCMC chain:
+mcmcCoda <- genMCMC(
+  datFrm = as.data.frame(CBTU),
+  numSavedSteps = 300000, saveName = "TwoGroupTUrobustHet-",
+  yName = "Trading Ratio Change Cumulative", xName = "Scheme"
+)
+
+# Get summary statistics of chain:
+summaryInfo <- smryMCMC(mcmcCoda,
+  RopeMuDiff = RopeMuDiff,
+  RopeSdDiff = RopeSdDiff, RopeEff = RopeEff,
+  saveName = NULL
+)
+
+mcmcMat <- as.matrix(mcmcCoda, chains = TRUE)
+mu2 <- mcmcMat[, "mu[2]"]
+mu1 <- mcmcMat[, "mu[1]"]
+xlim <- range(c(mu1, mu2))
+```
+
+```{r bayes output, echo=FALSE, include=TRUE}
+
+plotPost(mu1,
+  compVal = 0,
+  xlab = bquote(mu[1]), cex.lab = 1.75,
+  main = "Control Group", col = "skyblue"
+)
+
+plotPost(mu2,
+  compVal = 0,
+  xlab = bquote(mu[2]), cex.lab = 1.75,
+  main = "Match Trading Group", col = "skyblue"
+)
+
+plotPost(mu2 - mu1,
+  compVal = 0,
+  xlab = bquote("muDiff =", mu[2] - mu[1]), cex.lab = 1.75,
+  main = "Difference of Means:\nMatch Trading - Control", col = "skyblue"
+)
+
+as_tibble(as_tibble(rownames = "id", summaryInfo)) %>%
+  select(id, HDIlow, HDIhigh, Mean, Median, Mode, PcntGtCompVal) %>%
+  kable(
+    col.names = c(
+      "Variable", "HDI Lower Bound", "HDI Upper Bound",
+      "Mean", "Median", "Mode",
+      "Credible %\ngreater than zero"
+    ),
+    digits = 1, format = "html"
+  ) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
+```

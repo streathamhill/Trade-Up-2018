@@ -1,11 +1,13 @@
 ---
-title: "Unified Trade Up Analysis"
+title: "2018 Trade Up Analysis"
 author: "Richard Harries"
-date: "13 March 2019"
+date: '`r format(Sys.Date(), "%A, %d %B %Y")`'
 output:
-  html_document:
-    df_print: paged
-  pdf_document: default
+  prettydoc::html_pretty:
+    highlight: github
+    theme: architect
+editor_options:
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -13,12 +15,13 @@ source("Common Tools.R")
 library(broom)
 library(knitr)
 library(kableExtra)
+library(plotly)
 library(readxl)
 ```
 
 ```{r data import, include=FALSE}
 CBTU <-
-  read_excel("CBTU PtC - Roll Out Year Q4 110219.xlsx",
+  read_excel("CBTU PtC - Roll Out Year Q4 100419.xlsx",
     sheet = "Clean Data",
     skip = 0
   ) %>%
@@ -60,9 +63,15 @@ CBTU["Trading Ratio Change Cumulative"] <-
 
 ## Exploratory Data Analysis
 
-There are 99 organisations in the sample, 20 in the control group, 79 in the treatment group. Both participate in the SSE-run action learning sets.
+There are 99 organisations in the sample, with up to 20 data points recorded for each (trading income and non-trading income, for each quarter, in the baseline year and programme year, plus four quarterly Trade Up grant awards). However, the School for Social Entrepreneurs has only provided 1,822 data points (92%) out of a potential 1,980.
 
-```{r eda1, echo = FALSE}
+**Trading ratios**
+
+*Performance*
+
+Mean trading ratios fell for organisations in the Control Group and rose for those in the Match Trading Group. This is consistent with the core hypothesis of Trade Up.
+
+```{r means, echo = FALSE}
 CBTU %>%
   group_by(Scheme) %>%
   summarise(
@@ -72,15 +81,18 @@ CBTU %>%
     mean_Change_C = mean(`Trading Ratio Change Cumulative`, na.rm = TRUE)
   ) %>%
   kable(
-    caption = "**Trading ratio, mean changes**",
     col.names = c(
-      "Scheme", "n", "Baseline year",
-      "Trade Up year", "Change"
+      "Group","n",
+      "Baseline year", "Trade Up year", "Change"
     ),
     digits = 1, format = "html"
   ) %>%
   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
 
+The same pattern occurs for the median trading ratios although the difference is less marked, reflecting the fact that medians are less influenced by outliers (see boxplot below).
+
+```{r medians, echo = FALSE}
 CBTU %>%
   group_by(Scheme) %>%
   summarise(
@@ -90,85 +102,89 @@ CBTU %>%
     median_Change_C = median(`Trading Ratio Change Cumulative`, na.rm = TRUE)
   ) %>%
   kable(
-    caption = "**Trading ratio, median changes**",
     col.names = c(
-      "Scheme", "n", "Baseline year",
-      "Trade Up year", "Change"
+      "Group", "n",
+      "Baseline year", "Trade Up year", "Change"
     ),
     digits = 1, format = "html"
   ) %>%
   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
 ```
-**Kruskal-Wallis Test**
+*Significance*
 
-A collection of data samples are independent if they come from unrelated populations and the samples do not affect each other. Using the Kruskal-Wallis Test, we can decide whether the population distributions are identical without assuming them to follow the normal distribution.
+Tests for significance can be unreliable for small samples. Two tests that are appropriate for the Trade Up dataset are the Kruskal-Wallis Test and the Mann-Whitney-Wilcoxon Test. Neither suggests there is a significant difference between the Control Group and the Match Trading Group. This is **not** consistent with the core hypothesis of Trade Up.
 
-```{r eda2, echo = FALSE}
-CBTU %>% kruskal.test(`Trading Ratio Cumulative` ~ as.factor(Scheme), .)
-CBTU %>% kruskal.test(`Trading Ratio Change Cumulative` ~ as.factor(Scheme), .)
-```
-
-**Mann-Whitney-Wilcoxon Test**
-
-Two data samples are independent if they come from distinct populations and the samples do not affect each other. Using the Mann-Whitney-Wilcoxon Test, we can decide whether the population distributions are identical without assuming them to follow the normal distribution.
-
-```{r eda3, echo = FALSE}
-CBTU %>% wilcox.test(`Trading Ratio Cumulative` ~ as.factor(Scheme), .)
-CBTU %>% wilcox.test(`Trading Ratio Change Cumulative` ~ as.factor(Scheme), .)
+```{r tests, echo = FALSE}
+CBTU %>%
+  mutate(Group = as.factor(Scheme),
+         `Trading Ratio Change` = `Trading Ratio Change Cumulative`) %>%
+  kruskal.test(`Trading Ratio Change` ~ Group, .)
+CBTU %>%
+  mutate(Group = as.factor(Scheme),
+         `Trading Ratio Change` = `Trading Ratio Change Cumulative`) %>%
+  wilcox.test(`Trading Ratio Change` ~ Group, .)
 ```
 
 ## Plots
 
-You can also embed plots, for example:
+**Distributions**
 
-```{r pressure, echo=FALSE}
-CBTU %>%
-  ggplot() +
-  geom_histogram(aes(
-    x = `Trading Ratio Change Cumulative`,
-    colour = 24, fill = Location
-  ),
-  bins = 10, show.legend = FALSE
-  ) +
-  labs(
-    title = "TradeUp 2018: Cumulative performance distribution",
-    subtitle = "(Compared with the equivalent trading ratio in the baseline year)",
-    x = "", y = "Percentage point change",
-    caption = "(based on data from the School for Social Entrepreneurs)"
-  ) +
-  facet_wrap(vars(Scheme, Location), ncol = 5) +
-  theme_ptc()
+Four community businesses in the Match Trading Group saw their trading ratios increase by more than 50% in 2018, compared to maximum growth of 40% in the Control Group. By contrast, the largest trading ratio reduction occured in the Match Trading Group, falling by more than 50%. 
 
-CBTU %>%
-  ggplot() +
-  geom_histogram(aes(
-    x = `Trading Ratio Change Cumulative`,
-    colour = 24, fill = Location
-  ),
-  bins = 5
-  ) +
-  guides(colour = FALSE) +
-  labs(
-    title = "TradeUp 2018: Cumulative performance distribution",
-    subtitle = "(Compared with the equivalent trading ratio in the baseline year)",
-    x = "", y = "Percentage point change",
-    caption = "(based on data from the School for Social Entrepreneurs)"
-  ) +
-  facet_wrap(vars(Scheme)) +
-  theme_ptc()
+```{r distributions, echo=FALSE, warning=FALSE}
+p <-
+  CBTU %>%
+    rename("Trading ratio" = "Trading Ratio Change Cumulative") %>%
+    ggplot(aes(Scheme, `Trading ratio`,
+      text = paste0(round(`Trading ratio`, 2),"\n", Sector)
+    )) +
+    geom_boxplot() +
+    geom_point(aes(colour = `Sector`)) +
+    labs(
+      title = "Boxplot: Increase/decrease in trading ratios",
+      x = "", y = "Percentage point change"
+    ) +
+  theme(legend.position = "none")
+ggplot_ptc(p, "text")
 
-CBTU %>%
-  ggplot(aes(Scheme, `Trading Ratio Change Cumulative`)) +
-  geom_boxplot() +
-  geom_point(aes(colour = `Scheme`), show.legend = FALSE) +
-  labs(
-    title = "TradeUp 2018: Cumulative performance",
-    subtitle = "(compared with the equivalent trading ratio in the baseline year)",
-    x = "", y = "Percentage point change",
-    caption = "(based on data from the School for Social Entrepreneurs)"
-  ) +
-  theme_ptc()
+p <-
+  CBTU %>%
+    ggplot() +
+    geom_histogram(aes(
+      x = `Trading Ratio Change Cumulative`,
+      colour = 24, fill = Sector),
+    bins = 5
+    ) +
+    guides(colour = FALSE) +
+    labs(
+      title = "Histogram: Increase/decrease in trading ratios",
+      x = "Percentage point change", y = ""
+    ) +
+    facet_wrap(vars(Scheme))
+ggplot_ptc(p, "y")
 
+p <-
+  CBTU %>%
+    ggplot() +
+    geom_histogram(aes(
+      x = `Trading Ratio Change Cumulative`,
+      colour = 24, fill = Sector
+    ),
+    bins = 10, show.legend = FALSE
+    ) +
+    labs(
+      title = "Histogram: Increase/decrease in trading ratios, by group and location",
+      x = "Percentage point change", y = ""
+    ) +
+    facet_wrap(vars(Scheme, Location), ncol = 5)
+ggplot_ptc(p, "y")
+```
+
+**Trends**
+
+Trading ratios went up in both the Control Group and the Match Trading Group across 2018, ending up just below 80% in both cases. However, compared to the baseline year, quarterly trading ratios generally **fell** in both groups, with the Control Group doing relatively **better** than the Match Trading Group. This is **not** consistent with the core Trade Up hypothesis.
+
+```{r trends, echo=FALSE, warning=FALSE}
 CBTU_AVG <- CBTU %>%
   group_by(Scheme) %>%
   summarise_at(
@@ -178,110 +194,99 @@ CBTU_AVG <- CBTU %>%
   gather(`Ratio Type`, Value, 2:ncol(.)) %>%
   spread(Scheme, Value)
 
-CBTU_AVG %>%
-  filter(str_detect(`Ratio Type`, "Trading Ratio Q")) %>%
-  rename("MT" = "Match Trading") %>%
-  ggplot(aes(x = `Ratio Type`)) +
-  geom_point(aes(y = Control, group = "Control", colour = "Control"), size = 2) +
-  geom_line(aes(y = Control, group = "Control", colour = "Control"), size = 1.25) +
-  geom_point(aes(y = MT, group = "Match Trading", colour = "Match Trading"), size = 2) +
-  geom_line(aes(y = MT, group = "Match Trading", colour = "Match Trading"), size = 1.25) +
-  scale_x_discrete(labels = c("Q1", "Q2", "Q3", "Q4")) +
-  labs(
-    title = "TradeUp 2018: Quarterly median performance",
-    subtitle = "(absolute trading ratio in 2018)",
-    colour = "", x = "", y = "Percentage",
-    caption = "(based on data from the School for Social Entrepreneurs)"
-  ) +
-  theme_ptc()
+p <-
+  CBTU_AVG %>%
+    filter(str_detect(`Ratio Type`, "Trading Ratio Q")) %>%
+    ggplot(aes(
+      x = `Ratio Type`,
+      text = paste0(
+        "Control: ", round(Control, 2), "\n",
+        "Match Trading: ", round(`Match Trading`, 2)
+      )
+    )) +
+    geom_point(aes(y = Control, colour = "Control"), size = 2) +
+    geom_line(aes(y = Control, group = "Control", colour = "Control"), size = 1.25) +
+    geom_point(aes(y = `Match Trading`, colour = "Match Trading"), size = 2) +
+    geom_line(aes(y = `Match Trading`, group = "Match Trading", colour = "Match Trading"), size = 1.25) +
+    scale_x_discrete(labels = c("Q1", "Q2", "Q3", "Q4")) +
+    labs(
+      title = "Line chart: Quarterly median trading ratios",
+      colour = "", x = "", y = "Percentage",
+      caption = "(based on data from the School for Social Entrepreneurs)"
+    ) +
+    ylim(0, 100)
+ggplot_ptc(p, "text")
 
-CBTU_AVG %>%
-  filter(str_detect(`Ratio Type`, "Trading Ratio Change Q")) %>%
-  rename("MT" = "Match Trading") %>%
-  ggplot(aes(x = `Ratio Type`)) +
-  geom_point(aes(y = Control, group = "Control", colour = "Control"), size = 2) +
-  geom_line(aes(y = Control, group = "Control", colour = "Control"), size = 1.25) +
-  geom_point(aes(y = MT, group = "Match Trading", colour = "Match Trading"), size = 2) +
-  geom_line(aes(y = MT, group = "Match Trading", colour = "Match Trading"), size = 1.25) +
-  scale_x_discrete(labels = c("Q1", "Q2", "Q3", "Q4")) +
-  labs(
-    title = "TradeUp 2018: Quarterly median performance",
-    subtitle = "(compared with the equivalent trading ratio in the baseline year)",
-    colour = "", x = "", y = "Percentage point change",
-    caption = "(based on data from the School for Social Entrepreneurs)"
-  ) +
-  geom_hline(aes(yintercept = 0)) +
-  theme_ptc()
+p <-
+  CBTU_AVG %>%
+    filter(str_detect(`Ratio Type`, "Trading Ratio Change Q")) %>%
+    ggplot(aes(x = `Ratio Type`, text = paste0("Control: ", round(Control, 2), "\n", "Match Trading: ", round(`Match Trading`, 2)))) +
+    geom_point(aes(y = Control, colour = "Control"), size = 2) +
+    geom_line(aes(y = Control, group = "Control", colour = "Control"), size = 1.25) +
+    geom_point(aes(y = `Match Trading`, colour = "Match Trading"), size = 2) +
+    geom_line(aes(y = `Match Trading`, group = "Match Trading", colour = "Match Trading"), size = 1.25) +
+    scale_x_discrete(labels = c("Q1", "Q2", "Q3", "Q4")) +
+    labs(
+      title = "Line chart: Quarterly increase/decrease in trading ratios",
+      colour = "", x = "", y = "Percentage point change"
+      ) +
+    geom_hline(aes(yintercept = 0)) +
+    ylim(-10, 10)
+ggplot_ptc(p, "text")
 
-CBTU %>%
-  select(
-    Project, Scheme, Location,
-    contains("Trading Ratio Change Q")
-  ) %>%
-  gather(Quarter, `Trading Ratio Change`, 4:ncol(.)) %>%
-  mutate(Quarter = str_sub(Quarter, -2)) %>%
-  filter(Scheme == "Control") %>%
-  ggplot(aes(x = Quarter, y = `Trading Ratio Change`, group = Project)) +
-  geom_point(aes(colour = Location), show.legend = FALSE) +
-  geom_line(aes(colour = Location), size = 1.25, show.legend = FALSE) +
-  geom_hline(aes(yintercept = 0)) +
-  labs(
-    title = "TradeUp 2018: Quarterly median performance",
-    subtitle = "(Control Group, compared with the equivalent trading ratio in the baseline year)",
-    x = "", y = "Percentage point change",
-    caption = "(based on data from the School for Social Entrepreneurs)"
-  ) +
-  facet_grid(~Location) +
-  theme_ptc()
-
-CBTU %>%
-  select(
-    Project, Scheme, Location,
-    contains("Trading Ratio Change Q")
-  ) %>%
-  gather(Quarter, `Trading Ratio Change`, 4:ncol(.)) %>%
-  mutate(Quarter = str_sub(Quarter, -2)) %>%
-  filter(Scheme == "Match Trading") %>%
-  ggplot(aes(x = Quarter, y = `Trading Ratio Change`, group = Project)) +
-  geom_point(aes(colour = Location), show.legend = FALSE) +
-  geom_line(aes(colour = Location), size = 1.25, show.legend = FALSE) +
-  geom_hline(aes(yintercept = 0)) +
-  labs(
-    title = "TradeUp 2018: Quarterly median performance",
-    subtitle = "(Match Trading Group, compared with the equivalent trading ratio in the baseline year)",
-    x = "", y = "Percentage point change",
-    caption = "(based on data from the School for Social Entrepreneurs)"
-  ) +
-  facet_wrap(~Location, ncol = 4) +
-  theme_ptc()
-
-CBTU %>%
-  select(
-    Project, Scheme, Location,
-    contains("Trading Ratio Change Q"),
-    contains("Eligible To Claim Ratio Q")
-  ) %>%
-  gather(`Ratio Type`, Value, 4:ncol(.)) %>%
-  mutate(Quarter = str_sub(`Ratio Type`, -2)) %>%
-  mutate(`Ratio Type` = str_sub(`Ratio Type`, 1, -4)) %>%
-  replace_na(list(Value = 0)) %>%
-  spread(`Ratio Type`, Value) %>%
-  ggplot() +
-  geom_point(aes(
-    x = `Eligible To Claim Ratio`, y = `Trading Ratio Change`,
-    colour = Location
-  )) +
-  geom_hline(aes(yintercept = 0)) +
-  labs(
-    title = "TradeUp 2018: Quarterly performance",
-    subtitle = "(absolute ratios in 2018)",
-    x = "Eligible To Claim Ratio",
-    y = "Trading Ratio Change",
-    caption = "(based on data from the School for Social Entrepreneurs)"
-  ) +
-  facet_wrap(vars(Scheme, Quarter), ncol = 4) +
-  xlim(0, 100) +
-  theme_ptc()
+p <-
+  CBTU %>%
+    select(
+      Project, Scheme, Sector, Location,
+      contains("Trading Ratio Change Q")
+    ) %>%
+    gather(Quarter, `Trading Ratio Change`, 5:ncol(.)) %>%
+    mutate(Quarter = str_sub(Quarter, -2)) %>%
+    ggplot(aes(
+      x = Quarter, y = `Trading Ratio Change`, group = Project,
+      text = paste0(Project, ": ", round(`Trading Ratio Change`, 2),"\n", Sector)
+    )) +
+    geom_point(aes(colour = Sector), show.legend = FALSE) +
+    geom_line(aes(colour = Sector), show.legend = FALSE) +
+    geom_hline(aes(yintercept = 0)) +
+    labs(
+      title = "Line chart: Quarterly increase/decrease in trading ratios, by group and location",
+      x = "", y = "Percentage point change\n"
+    ) +
+    facet_wrap(vars(Scheme, Location), ncol = 5) +
+  theme(legend.position = "none")
+ggplot_ptc(p, "text")
 ```
+**Patterns**
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+This final chart compares the increase/decrease in trading ratios with the "Eligible To Claim Ratio" (ie. the quarterly Trade Up grant as a proportion of total quarterly income). There should be no relationshhip between the two.
+
+```{r patterns, echo=FALSE, warning=FALSE}
+p <-
+  CBTU %>%
+    select(
+      Project, Scheme, Location,
+      contains("Trading Ratio Change Q"),
+      contains("Eligible To Claim Ratio Q")
+    ) %>%
+    gather(`Ratio Type`, Value, 4:ncol(.)) %>%
+    mutate(Quarter = str_sub(`Ratio Type`, -2)) %>%
+    mutate(`Ratio Type` = str_sub(`Ratio Type`, 1, -4)) %>%
+    replace_na(list(Value = 0)) %>%
+    spread(`Ratio Type`, Value) %>%
+    ggplot(aes(text = paste0(Location, " - ", Project, ":\nTrading Ratio Change: ", round(`Trading Ratio Change`, 2), "\nEligible To Claim Ratio: ", round(`Eligible To Claim Ratio`, 2)))) +
+    geom_point(aes(
+      x = `Eligible To Claim Ratio`, y = `Trading Ratio Change`,
+      colour = Location
+    )) +
+    geom_hline(aes(yintercept = 0)) +
+    geom_vline(aes(xintercept = 50)) +
+    labs(
+      title = "Scatter plot: Quarterly increase/decrease in trading ratio, relative to eligible to claim ratio",
+      x = "\n\nEligible To Claim Ratio\n\n",
+      y = "\n\nPercentage point change\n\n"
+    ) +
+    facet_grid(Scheme ~ Quarter) +
+    xlim(0, 100)
+ggplot_ptc(p, "text")
+```

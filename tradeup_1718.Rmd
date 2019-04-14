@@ -1,0 +1,313 @@
+---
+title: "Unified Trade Up Analysis: 2017/2018"
+author: "Richard Harries"
+date: '`r format(Sys.Date(), "%A, %d %B %Y")`'
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+source("Common Tools.R")
+library(broom)
+library(knitr)
+library(kableExtra)
+library(plotly)
+library(readxl)
+```
+
+```{r data import, include=FALSE}
+
+CBTU_2017 <-
+  read_excel("MT CBTUD PTC 170918.xlsx",
+    sheet = "Sheet1",
+    skip = 0
+  )%>%
+  mutate(
+    Year = 2017,
+    Location = case_when(
+      Location == "L" ~ "London",
+      Location == "NW" ~ "Liverpool"
+    ),
+    Scheme = case_when(
+      Scheme == "C" ~ "Control",
+      Scheme == "MT" ~ "Match Trading"
+    )
+  ) %>%
+  select(-c("Sector", "Beneficiary", "Impact Area 1", "Impact Area 2"))
+
+CBTU_2018 <-
+  read_excel("CBTU PtC - Roll Out Year Q4 110219.xlsx",
+    sheet = "Clean Data",
+    skip = 0
+  ) %>%
+  mutate(
+    Year = 2018,
+    Scheme = case_when(
+      Scheme == "C" ~ "Control",
+      Scheme == "MT" ~ "Match Trading"
+    )
+  ) %>%
+  select(-c("Sector", "Beneficiary", "Impact Area 1", "Impact Area 2"))
+
+CBTU <- full_join(CBTU_2017, CBTU_2018)
+
+# Calculate quarterly trading ratios and annual cumulative ratios
+# for the baseline and programme years
+
+for (i in c("Baseline ", "")) {
+  for (j in 1:4) {
+    CBTU[paste0("Trading Ratio ", i, "Q", j)] <- 100 * CBTU[paste0("Trading Income ", i, "Q", j)] /
+      (CBTU[paste0("Trading Income ", i, "Q", j)] + CBTU[paste0("Non-trading Income ", i, "Q", j)])
+  }
+  CBTU[paste0("Trading Ratio ", i, "Cumulative")] <- 100 *
+    rowSums(CBTU[grepl(paste0("Trading Income ", i, "Q"), names(CBTU))], na.rm = FALSE) /
+    (rowSums(CBTU[grepl(paste0("Trading Income ", i, "Q"), names(CBTU))], na.rm = FALSE) +
+      rowSums(CBTU[grepl(paste0("Non-trading Income ", i, "Q"), names(CBTU))], na.rm = FALSE))
+}
+
+# Calculate the change in quarterly and annual ratios
+# between the two years
+
+for (j in 1:4) {
+  CBTU[paste0("Trading Ratio Change Q", j)] <-
+    (CBTU[paste0("Trading Ratio Q", j)] - CBTU[paste0("Trading Ratio Baseline Q", j)])
+  CBTU[paste0("Eligible To Claim Ratio Q", j)] <-
+    (CBTU[paste0("Eligible To Claim Q", j)] / (CBTU[paste0("Trading Income Q", j)] + CBTU[paste0("Non-trading Income Q", j)])) * 100
+}
+
+CBTU["Trading Ratio Change Cumulative"] <-
+  CBTU["Trading Ratio Cumulative"] -
+  CBTU["Trading Ratio Baseline Cumulative"]
+```
+
+## Exploratory Data Analysis
+
+This analysis combines data from the 29 community businesses that took part in Trade Up in 2017 with the 99 businesses that took part in 2018.
+
+**Trading ratios**
+
+*Performance*
+
+Mean trading ratios fell for organisations in the Control Group and rose for those in the Match Trading Group. This is consistent with the core hypothesis of Trade Up.
+
+```{r means, echo = FALSE}
+CBTU %>%
+  group_by(Scheme) %>%
+  summarise(
+    n = n(),
+    mean_BASELINE_C = mean(`Trading Ratio Baseline Cumulative`, na.rm = TRUE),
+    mean_TRADEUP_C = mean(`Trading Ratio Cumulative`, na.rm = TRUE),
+    mean_Change_C = mean(`Trading Ratio Change Cumulative`, na.rm = TRUE)
+  ) %>%
+  kable(
+    col.names = c(
+      "Group", "n",
+      "Baseline year", "Trade Up year", "Change"
+    ),
+    digits = 1, format = "html"
+  ) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+The same pattern occurs for the median trading ratios although the difference is slightly less marked, reflecting the fact that medians are less influenced by outliers (see boxplot below).
+
+```{r medians, echo = FALSE}
+CBTU %>%
+  group_by(Scheme) %>%
+  summarise(
+    n = n(),
+    median_BASELINE_C = median(`Trading Ratio Baseline Cumulative`, na.rm = TRUE),
+    median_TRADEUP_C = median(`Trading Ratio Cumulative`, na.rm = TRUE),
+    median_Change_C = median(`Trading Ratio Change Cumulative`, na.rm = TRUE)
+  ) %>%
+  kable(
+    col.names = c(
+      "Group", "n",
+      "Baseline year", "Trade Up year", "Change"
+    ),
+    digits = 1, format = "html"
+  ) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+*Significance*
+
+Tests for significance can be unreliable for small samples. Two tests that are appropriate for the Trade Up dataset are the Kruskal-Wallis Test and the Mann-Whitney-Wilcoxon Test. Both tests lend **some** support to the core hypothesis of Trade Up. (Given the observed differences between the two groups, there is 10% chance that they both come from the same population - that is, that there is no actual difference between the groups.)
+
+```{r tests, echo = FALSE}
+CBTU %>%
+  mutate(Group = as.factor(Scheme),
+         `Trading Ratio Change` = `Trading Ratio Change Cumulative`) %>%
+  kruskal.test(`Trading Ratio Change` ~ Group, .)
+CBTU %>%
+  mutate(Group = as.factor(Scheme),
+         `Trading Ratio Change` = `Trading Ratio Change Cumulative`) %>%
+  wilcox.test(`Trading Ratio Change` ~ Group, .)
+```
+
+## Plots
+
+**Distributions**
+
+Five community businesses in the Match Trading Group saw their trading ratios increase by more than 50% in 2018, compared to maximum growth of 40% in the Control Group. On the other hand, the largest trading ratio reduction also occured in the Match Trading Group, falling by more than 50%. 
+
+```{r distributions, echo=FALSE, warning=FALSE}
+p <-
+  CBTU %>%
+    rename("Trading ratio" = "Trading Ratio Change Cumulative") %>%
+    ggplot(aes(Scheme, `Trading ratio`,
+      text = round(`Trading ratio`, 2)
+    )) +
+    geom_boxplot() +
+    geom_point(aes(colour = `Scheme`), show.legend = FALSE) +
+    labs(
+      title = "Boxplot: Increase/decrease in trading ratios",
+      x = "", y = "Percentage point change"
+    )
+ggplot_ptc(p, "text")
+
+p <-
+  CBTU %>%
+    ggplot() +
+    geom_histogram(aes(
+      x = `Trading Ratio Change Cumulative`,
+      colour = 24, fill = Location),
+    bins = 5
+    ) +
+    guides(colour = FALSE) +
+    labs(
+      title = "Histogram: Increase/decrease in trading ratios",
+      x = "Percentage point change", y = ""
+    ) +
+    facet_wrap(vars(Scheme))
+ggplot_ptc(p, "y")
+
+p <-
+  CBTU %>%
+    ggplot() +
+    geom_histogram(aes(
+      x = `Trading Ratio Change Cumulative`,
+      colour = 24, fill = Location
+    ),
+    bins = 10, show.legend = FALSE
+    ) +
+    labs(
+      title = "Histogram: Increase/decrease in trading ratios, by group and location",
+      x = "Percentage point change", y = ""
+    ) +
+    facet_wrap(vars(Scheme, Location), ncol = 5)
+ggplot_ptc(p, "y")
+```
+
+**Trends**
+
+Median trading ratios went up in both the Control Group and the Match Trading Group across 2018, ending up between 75% and 80%. However, compared to the baseline year, quarterly trading ratios generally **fell** in both groups, with the Control Group doing relatively worse than the Match Trading Group. While this is not inconsistent with the core Trade Up hypothesis, it suggests that trading ratio growth might have a strong seasonal element across the four quarters observed.
+
+```{r trends, echo=FALSE, warning=FALSE}
+CBTU_AVG <- CBTU %>%
+  group_by(Scheme) %>%
+  summarise_at(
+    vars(starts_with("Trading Ratio")),
+    list(median = ~ median(., na.rm = TRUE))
+  ) %>%
+  gather(`Ratio Type`, Value, 2:ncol(.)) %>%
+  spread(Scheme, Value)
+
+p <-
+  CBTU_AVG %>%
+    filter(str_detect(`Ratio Type`, "Trading Ratio Q")) %>%
+    ggplot(aes(
+      x = `Ratio Type`,
+      text = paste0(
+        "Control: ", round(Control, 2), "\n",
+        "Match Trading: ", round(`Match Trading`, 2)
+      )
+    )) +
+    geom_point(aes(y = Control, colour = "Control"), size = 2) +
+    geom_line(aes(y = Control, group = "Control", colour = "Control"), size = 1.25) +
+    geom_point(aes(y = `Match Trading`, colour = "Match Trading"), size = 2) +
+    geom_line(aes(y = `Match Trading`, group = "Match Trading", colour = "Match Trading"), size = 1.25) +
+    scale_x_discrete(labels = c("Q1", "Q2", "Q3", "Q4")) +
+    labs(
+      title = "Line chart: Quarterly median trading ratios",
+      colour = "", x = "", y = "Percentage",
+      caption = "(based on data from the School for Social Entrepreneurs)"
+    ) +
+    ylim(0, 100)
+ggplot_ptc(p, "text")
+
+p <-
+  CBTU_AVG %>%
+    filter(str_detect(`Ratio Type`, "Trading Ratio Change Q")) %>%
+    ggplot(aes(x = `Ratio Type`, text = paste0("Control: ", round(Control, 2), "\n", "Match Trading: ", round(`Match Trading`, 2)))) +
+    geom_point(aes(y = Control, colour = "Control"), size = 2) +
+    geom_line(aes(y = Control, group = "Control", colour = "Control"), size = 1.25) +
+    geom_point(aes(y = `Match Trading`, colour = "Match Trading"), size = 2) +
+    geom_line(aes(y = `Match Trading`, group = "Match Trading", colour = "Match Trading"), size = 1.25) +
+    scale_x_discrete(labels = c("Q1", "Q2", "Q3", "Q4")) +
+    labs(
+      title = "Line chart: Quarterly increase/decrease in trading ratios",
+      colour = "", x = "", y = "Percentage point change"
+      ) +
+    geom_hline(aes(yintercept = 0)) +
+    ylim(-10, 10)
+ggplot_ptc(p, "text")
+
+p <-
+  CBTU %>%
+    select(
+      Year, Project, Scheme, Location,
+      contains("Trading Ratio Change Q")
+    ) %>%
+    gather(Quarter, `Trading Ratio Change`, 5:ncol(.)) %>%
+    mutate(Quarter = str_sub(Quarter, -2)) %>%
+    ggplot(aes(
+      x = Quarter, y = `Trading Ratio Change`, group = Project,
+      text = paste0(Project, " (", Year, "): ", round(`Trading Ratio Change`, 2))
+    )) +
+    geom_point(aes(colour = Location), show.legend = FALSE) +
+    geom_line(aes(colour = Location), show.legend = FALSE) +
+    geom_hline(aes(yintercept = 0)) +
+    labs(
+      title = "Line chart: Quarterly increase/decrease in trading ratios, by group and location",
+      x = "", y = "Percentage point change\n"
+    ) +
+    facet_wrap(vars(Scheme, Location), ncol = 5)
+ggplot_ptc(p, "text")
+```
+**Patterns**
+
+This final chart compares the increase/decrease in trading ratios with the "Eligible To Claim Ratio" (ie. the quarterly Trade Up grant as a proportion of total quarterly income). There should be no relationshhip between the two.
+
+```{r patterns, echo=FALSE, warning=FALSE}
+p <-
+  CBTU %>%
+    select(
+      Year, Project, Scheme, Location,
+      contains("Trading Ratio Change Q"),
+      contains("Eligible To Claim Ratio Q")
+    ) %>%
+    gather(`Ratio Type`, Value, 5:ncol(.)) %>%
+    mutate(Quarter = str_sub(`Ratio Type`, -2)) %>%
+    mutate(`Ratio Type` = str_sub(`Ratio Type`, 1, -4)) %>%
+    replace_na(list(Value = 0)) %>%
+    spread(`Ratio Type`, Value) %>%
+    ggplot(aes(text = paste0(Location, " - ", Project, " (", Year, "):\nTrading Ratio Change: ", round(`Trading Ratio Change`, 2), "\nEligible To Claim Ratio: ", round(`Eligible To Claim Ratio`, 2)))) +
+    geom_point(aes(
+      x = `Eligible To Claim Ratio`, y = `Trading Ratio Change`,
+      colour = Location
+    )) +
+    geom_hline(aes(yintercept = 0)) +
+    geom_vline(aes(xintercept = 50)) +
+    labs(
+      title = "Scatter plot: Quarterly increase/decrease in trading ratio, relative to eligible to claim ratio",
+      x = "\n\nEligible To Claim Ratio\n\n",
+      y = "\n\nPercentage point change\n\n"
+    ) +
+    facet_grid(Scheme ~ Quarter) +
+    xlim(0, 100)
+ggplot_ptc(p, "text")
+```
