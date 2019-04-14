@@ -1,0 +1,12 @@
+
+  model {
+    for ( i in 1:Ntotal ) {
+      y[i] ~ dt( mu[x[i]] , 1/sigma[x[i]]^2 , nu )
+    }
+    for ( j in 1:2 ) { # 2 groups
+      mu[j] ~ dnorm( meanY , 1/(100*sdY)^2 )
+      sigma[j] ~ dunif( sdY/1000 , sdY*1000 )
+    }
+    nu ~ dexp(1/30.0)
+}
+  

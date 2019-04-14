@@ -2,9 +2,16 @@
 # Common libraries----------------------------------------------------------------------
 
 library(tidyverse)
+library(plotly)
 library(httr) # For http access
 
 # Common functions -------------------------------------------------------------
+
+ggplot_ptc <- function(plot, tip) {
+  ggplotly(plot, session = "knitr", tooltip = tip,
+           height = 500, width = 1000) %>%
+    plotly::config(displayModeBar = FALSE)
+}
 
 theme_ptc <- function(base_size = 10, base_family = "sans") {
   theme_bw(base_size = base_size, base_family = base_family) +
